@@ -4,7 +4,7 @@ Local T5 inference engine for grammar correction task.
 
 ## What is this
 
-This project implement a bare minimum inference engine for the ONNX version of T5 models, especially the [TonyRaju/gec-t5-small-coedit-onnx-int8](https://huggingface.co/TonyRaju/gec-t5-small-coedit-onnx-int8) for the grammar correction task.
+This project implements a bare minimum inference engine for the ONNX version of T5 models, especially the [TonyRaju/gec-t5-small-coedit-onnx-int8](https://huggingface.co/TonyRaju/gec-t5-small-coedit-onnx-int8) for the grammar correction task.
 
 But in theory, it should work with any ONNX model.
 
@@ -18,7 +18,7 @@ $ ./start.sh
 
 ## How to run
 
-Pass the text you want to fix as an argument when running the code:
+Pass the text you want to fix as an argument when you run the code:
 
 ```
 $ ./build/tinygrammar "the input text"
