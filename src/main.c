@@ -1,26 +1,27 @@
 #include <stdio.h>
 #include "tokenizer.h"
+#include "inference.h"
 
 int main() {
     Tokenizer tok;
-    if (tokenizer_load(&tok, "model/tokenizer.json") != 0) {
-        fprintf(stderr, "Failed to load tokenizer\n");
-        return 1;
-    }
-    printf("Vocab size: %d\n", tok.vocab_size);
+    tokenizer_load(&tok, "model/tokenizer.json");
 
-    const char* text = " He go to school yesterday.";  // intentional grammar error
-    int ids[256];
-    int n = tokenizer_encode(&tok, text, ids, 256);
+    InferenceCtx ctx;
+    inference_load(&ctx, "model/encoder_model.onnx", "model/decoder_model.onnx");
 
-    printf("Token count: %d\n", n);
-    for (int i = 0; i < n; i++) {
-        printf("  [%d] id=%d  piece='%s'\n", i, ids[i], tok.vocab[ids[i]].piece);
-    }
+    const char* input = "gec: Last weekend i sign up a gym membership. Since then I wnet swimming everyday.";
 
-    char decoded[1024];
-    tokenizer_decode(&tok, ids, n, decoded, sizeof(decoded));
-    printf("Decoded: %s\n", decoded);
+    int input_ids[256];
+    int input_len = tokenizer_encode(&tok, input, input_ids, 256);
 
+    int output_ids[256];
+    int output_len = inference_run(&ctx, input_ids, input_len, output_ids, 256);
+
+    char result[1024];
+    tokenizer_decode(&tok, output_ids, output_len, result, sizeof(result));
+    printf("Input:  %s\n", input);
+    printf("Output: %s\n", result);
+
+    inference_free(&ctx);
     return 0;
 }
