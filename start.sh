@@ -10,7 +10,7 @@ fi
 
 if [ ! -d "external/onnxruntime" ]; then
   echo "Downloading ONNXRuntime..."
-  cd "external"
+  mkdir "external" && cd "external"
   wget "https://github.com/microsoft/onnxruntime/releases/download/v1.27.0/onnxruntime-linux-x64-1.27.0.tgz"
   tar xvf onnxruntime-linux-x64-1.27.0.tgz
   mv "onnxruntime-linux-x64-1.27.0" "onnxruntime"
