@@ -44,3 +44,10 @@ set_target_properties(tinygrammar PROPERTIES
     BUILD_RPATH  "${ORT_ROOT}/lib"
     INSTALL_RPATH "${ORT_ROOT}/lib"
 )
+
+# Install the desktop launcher:  cmake --build build --target install_desktop
+add_custom_target(install_desktop
+    COMMAND /usr/bin/env sh ${CMAKE_SOURCE_DIR}/install.sh
+    DEPENDS tinygrammar
+    COMMENT "Install TinyGrammar into the applications menu"
+)

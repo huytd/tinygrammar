@@ -1,9 +1,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <limits.h>
 #include "grammar.h"
 #include "tray.h"
 #include "ipc.h"
+
+// Re-launch ourselves as root via sudo (only once) so the app can request
+// administrator permission automatically when started from the tray.
+static void elevate_to_root(int argc, char* argv[]) {
+    if (getuid() == 0) return; // already root
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--elevated") == 0) return; // prevent re-elevation
+    }
+
+    char self[PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", self, (size_t)PATH_MAX);
+    if (n <= 0 || n >= PATH_MAX) {
+        fprintf(stderr, "tinygrammar: cannot resolve own path for elevation\n");
+        return;
+    }
+    self[n] = '\0';
+
+    char cmd[4096];
+    snprintf(cmd, sizeof(cmd), "sudo -E '%s' --tray --elevated", self);
+
+    fprintf(stderr, "tinygrammar: requesting administrator (sudo) privileges...\n");
+    int rc = system(cmd);
+    if (rc != 0) {
+        // No terminal / cancelled / sudo unavailable: run unprivileged instead
+        // of exiting silently, so the tray app still works.
+        fprintf(stderr, "tinygrammar: elevation unavailable (no sudo prompt). "
+                        "Running without administrator privileges.\n");
+    } else {
+        exit(0); // elevated child already launched; parent is done
+    }
+}
 
 static void print_usage(const char* prog) {
     printf("TinyGrammar - Local neural grammar correction\n\n");
@@ -26,8 +60,12 @@ int main(int argc, char* argv[]) {
         return tray_run(argc, argv, TRUE);
     }
 
-    // If no arguments or --tray flag, run the GTK tray application
-    if (argc == 1 || (argc == 2 && (strcmp(argv[1], "--tray") == 0 || strcmp(argv[1], "-t") == 0))) {
+    // If no arguments or --tray flag, run the GTK tray application.
+    // The "--elevated" flag marks a root child launched via sudo; strip it.
+    if (argc == 1 || (argc == 2 && (strcmp(argv[1], "--tray") == 0 || strcmp(argv[1], "-t") == 0)) ||
+        (argc == 3 && strcmp(argv[2], "--elevated") == 0 &&
+         (strcmp(argv[1], "--tray") == 0 || strcmp(argv[1], "-t") == 0))) {
+        elevate_to_root(argc, argv);
         return tray_run(argc, argv, FALSE);
     }
 
