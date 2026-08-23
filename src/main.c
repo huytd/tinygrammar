@@ -1,60 +1,77 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tokenizer.h"
-#include "inference.h"
+#include "grammar.h"
+#include "tray.h"
+#include "ipc.h"
 
-#define TOKENIZER_PATH "model/tokenizer.json"
-#define ENCODER_PATH   "model/encoder_model.onnx"
-#define DECODER_PATH   "model/decoder_model.onnx"
-#define PROMPT_PREFIX  "gec: "
+static void print_usage(const char* prog) {
+    printf("TinyGrammar - Local neural grammar correction\n\n");
+    printf("Usage:\n");
+    printf("  %s                      Run in GTK system tray mode (Hotkey: Super+G)\n", prog);
+    printf("  %s --tray               Run in GTK system tray mode\n", prog);
+    printf("  %s --fix                Trigger fix on currently running tray instance\n", prog);
+    printf("  %s <text to fix>        Fix grammar of given text via CLI\n", prog);
+    printf("  %s --help               Show this help message\n\n", prog);
+}
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <text>\n", argv[0]);
+    // If --fix or -f is passed, send trigger to running instance
+    if (argc == 2 && (strcmp(argv[1], "--fix") == 0 || strcmp(argv[1], "-f") == 0)) {
+        if (ipc_send_fix_command() == 0) {
+            return 0;
+        }
+        // If not running, fall back to running tray directly with immediate fix!
+        fprintf(stderr, "No running TinyGrammar instance found. Starting tray...\n");
+        return tray_run(argc, argv, TRUE);
+    }
+
+    // If no arguments or --tray flag, run the GTK tray application
+    if (argc == 1 || (argc == 2 && (strcmp(argv[1], "--tray") == 0 || strcmp(argv[1], "-t") == 0))) {
+        return tray_run(argc, argv, FALSE);
+    }
+
+    if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+        print_usage(argv[0]);
+        return 0;
+    }
+
+    // CLI mode: concatenate all arguments into a single input string
+    size_t total_len = 0;
+    for (int i = 1; i < argc; i++) {
+        total_len += strlen(argv[i]) + 1;
+    }
+
+    char* input = (char*)malloc(total_len + 1);
+    if (!input) {
+        fprintf(stderr, "Out of memory\n");
         return 1;
     }
 
-    // calculate total length needed
-    int total_len = strlen(PROMPT_PREFIX);
-    for (int i = 1; i < argc; i++)
-        total_len += strlen(argv[i]) + 1;  // +1 for space/null
-
-    char* input = malloc(total_len + 1);
-    if (!input) { fprintf(stderr, "OOM\n"); return 1; }
-
-    // build "PROMPT_PREFIX arg1 arg2 ..."
-    strcpy(input, PROMPT_PREFIX);
+    input[0] = '\0';
     for (int i = 1; i < argc; i++) {
         if (i > 1) strcat(input, " ");
         strcat(input, argv[i]);
     }
-    strcat(input, "</s>");
 
-    Tokenizer tok;
-    if (tokenizer_load(&tok, TOKENIZER_PATH) != 0) {
-        fprintf(stderr, "Failed to load tokenizer.json\n");
-        free(input); return 1;
+    if (grammar_init() != 0) {
+        fprintf(stderr, "Failed to initialize grammar engine\n");
+        free(input);
+        return 1;
     }
 
-    InferenceCtx ctx;
-    if (inference_load(&ctx, ENCODER_PATH, DECODER_PATH) != 0) {
-        fprintf(stderr, "Failed to load models\n");
-        free(input); return 1;
+    char* fixed = grammar_fix(input);
+    if (fixed) {
+        printf("%s\n", fixed);
+        free(fixed);
+    } else {
+        fprintf(stderr, "Grammar correction failed\n");
+        free(input);
+        grammar_cleanup();
+        return 1;
     }
-
-    int input_ids[512];
-    int input_len = tokenizer_encode(&tok, input, input_ids, 512);
-
-    int output_ids[512];
-    int output_len = inference_run(&ctx, input_ids, input_len, output_ids, 512);
-
-    char result[2048];
-    tokenizer_decode(&tok, output_ids, output_len, result, sizeof(result));
-
-    printf("%s\n", result);
 
     free(input);
-    inference_free(&ctx);
+    grammar_cleanup();
     return 0;
 }

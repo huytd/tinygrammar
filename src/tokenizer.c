@@ -15,8 +15,12 @@ int tokenizer_load(Tokenizer* tok, const char* json_path) {
     rewind(f);
 
     char* buf = malloc(len + 1);
-    fread(buf, 1, len, f);
-    buf[len] = '\0';
+    if (!buf) {
+        fclose(f);
+        return -1;
+    }
+    size_t read_bytes = fread(buf, 1, len, f);
+    buf[read_bytes] = '\0';
     fclose(f);
 
     // Find "vocab": [
@@ -27,7 +31,7 @@ int tokenizer_load(Tokenizer* tok, const char* json_path) {
     tok->vocab_size = 0;
     int id = 0;
 
-    while (*p && *p != ']') {
+    while (*p && *p != ']' && id < MAX_VOCAB) {
         // skip to inner '['
         while (*p && *p != '[' && *p != ']') p++;
         if (*p == ']') break;
@@ -35,31 +39,30 @@ int tokenizer_load(Tokenizer* tok, const char* json_path) {
 
         // parse piece string
         while (*p && *p != '"') p++;
+        if (!*p) break;
         p++;  // skip opening quote
+
         char* dst = tok->vocab[id].piece;
         int pi = 0;
-        while (*p && *p != '"' && pi < MAX_PIECE - 1) {
-            // handle \u2581 (▁ = UTF-8 E2 96 81) — SentencePiece space marker
-            if (p[0] == '\\' && p[1] == 'u') {
-                // copy as-is for now; real impl should decode unicode
-                dst[pi++] = ' ';  // map ▁ → space for simplicity
-                p += 6;
-            } else {
-                dst[pi++] = *p++;
+        while (*p && *p != '"') {
+            if (pi < MAX_PIECE - 1) {
+                dst[pi++] = *p;
             }
+            p++;
         }
         dst[pi] = '\0';
-        p++;  // skip closing quote
+        if (*p == '"') p++;  // skip closing quote
 
         // parse score
         while (*p && *p != ',' && *p != ']') p++;
+        if (!*p || *p == ']') break;
         p++;  // skip ','
         tok->vocab[id].score = strtof(p, &p);
         tok->vocab[id].id = id;
 
         // skip to end of inner ']'
         while (*p && *p != ']') p++;
-        p++;  // skip ']'
+        if (*p == ']') p++;  // skip ']'
         id++;
     }
 
@@ -112,6 +115,12 @@ int tokenizer_encode(Tokenizer* tok, const char* text, int* out_ids, int max_ids
                     best_len[i + plen]   = plen;
                 }
             }
+        }
+        // Fallback for single unmatched byte
+        if (best_score[i + 1] < -1e37f) {
+            best_score[i + 1] = best_score[i] - 100.0f;
+            best_tok[i + 1]   = 2;  // <unk> token
+            best_len[i + 1]   = 1;
         }
     }
 
